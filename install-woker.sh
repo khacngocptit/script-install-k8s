@@ -1,44 +1,86 @@
+#!/bin/bash
+
 # Cập nhật hệ thống
 sudo apt-get update
 sudo apt-get upgrade -y
 
-# Cài đặt Docker
-sudo apt-get install -y docker.io
-sudo systemctl enable docker
-sudo systemctl start docker
+# Cài đặt các gói cần thiết
+sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
 
-# Cài đặt kubeadm, kubelet, và kubectl
-sudo apt-get install -y apt-transport-https curl
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+# Thêm khóa GPG của Docker
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# Thêm repository Docker
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Cập nhật lại package index
 sudo apt-get update
-sudo apt-get install -y kubelet kubeadm kubectl
-sudo apt-mark hold kubelet kubeadm kubectl
+
+# Cài đặt Docker
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+
+# Cấu hình Docker để sử dụng systemd
+cat <<EOF | sudo tee /etc/docker/daemon.json
+{
+  "exec-opts": ["native.cgroupdriver=systemd"],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m"
+  },
+  "storage-driver": "overlay2"
+}
+EOF
+
+# Khởi động lại Docker
+sudo systemctl enable docker
+sudo systemctl daemon-reload
+sudo systemctl restart docker
 
 # Tắt swap
 sudo swapoff -a
-sudo sed -i '/ swap / s/^\\(.*\\)$/#\\1/g' /etc/fstab
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+# Thêm khóa GPG của Kubernetes
+sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
+# Thêm repository Kubernetes
+echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+# Cập nhật lại package index
+sudo apt-get update
+
+# Cài đặt Kubernetes components
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+# Cấu hình các module kernel cần thiết
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# Cấu hình sysctl params cần thiết
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+sudo sysctl --system
 
 # Cấu hình containerd
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
-sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 sudo systemctl restart containerd
 
-# Cấu hình crictl
-sudo crictl config --set runtime-endpoint=unix:///run/containerd/containerd.sock --set image-endpoint=unix:///run/containerd/containerd.sock
+# Đảm bảo kubelet sử dụng containerd
+echo "KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock" | sudo tee /etc/default/kubelet
 
 # Khởi động lại kubelet
+sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
-# Cài đặt net-tools
-sudo apt install -y net-tools
-
-# Cấu hình kernel parameters cho Kubernetes
-cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
-net.bridge.bridge-nf-call-ip6tables = 1
-net.bridge.bridge-nf-call-iptables = 1
-net.ipv4.ip_forward = 1
-EOF
-sudo sysctl --system
+echo "Worker node đã được cài đặt. Sử dụng lệnh 'kubeadm join' để kết nối vào cluster."
