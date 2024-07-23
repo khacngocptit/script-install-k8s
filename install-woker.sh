@@ -40,20 +40,20 @@ sudo systemctl restart docker
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
-# Thêm khóa GPG của Kubernetes
-sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
-
-# Thêm repository Kubernetes
-echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-
-# Cập nhật lại package index
+echo "Thêm khóa GPG của Kubernetes"
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+echo "Cập nhật lại package index"
 sudo apt-get update
 
-# Cài đặt Kubernetes components
+echo "Cài đặt Kubernetes components"
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 
-# Cấu hình các module kernel cần thiết
+sudo systemctl enable --now kubelet
+
+echo "Cấu hình các module kernel cần thiết"
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 overlay
 br_netfilter
@@ -62,7 +62,7 @@ EOF
 sudo modprobe overlay
 sudo modprobe br_netfilter
 
-# Cấu hình sysctl params cần thiết
+echo "Cấu hình sysctl params cần thiết"
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
@@ -71,16 +71,23 @@ EOF
 
 sudo sysctl --system
 
-# Cấu hình containerd
+echo "Cấu hình containerd"
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 sudo systemctl restart containerd
 
+cat <<EOF | sudo tee /etc/default/kubelet
 # Đảm bảo kubelet sử dụng containerd
 echo "KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock" | sudo tee /etc/default/kubelet
 
-# Khởi động lại kubelet
+echo "Khởi động lại kubelet"
 sudo systemctl daemon-reload
-sudo systemctl restart kubelet
+sudo systemctl restart kubelet || true
+
+echo "Checking kubelet status:"
+sudo systemctl status kubelet || true
+
+echo "Checking kubelet logs:"
+sudo journalctl -xeu kubelet || true
 
 echo "Worker node đã được cài đặt. Sử dụng lệnh 'kubeadm join' để kết nối vào cluster."

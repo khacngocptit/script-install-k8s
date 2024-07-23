@@ -41,12 +41,12 @@ sudo systemctl restart docker
 sudo swapoff -a
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 
-# Thêm khóa GPG của Kubernetes
-sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
-
-# Thêm repository Kubernetes
-echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
-
+echo "Thêm khóa GPG của Kubernetes"
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+echo "Cập nhật lại package index"
+sudo apt-get update
 # Cập nhật lại package index
 sudo apt-get update
 
@@ -73,7 +73,7 @@ EOF
 sudo sysctl --system
 
 # Khởi tạo cluster (thay YOUR_POD_CIDR bằng CIDR mạng pod của bạn)
-sudo kubeadm init --pod-network-cidr=YOUR_POD_CIDR
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
 
 # Thiết lập kubeconfig cho user hiện tại
 mkdir -p $HOME/.kube
