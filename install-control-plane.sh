@@ -74,7 +74,6 @@ sudo sysctl --system
 
 # Khởi tạo cluster (thay YOUR_POD_CIDR bằng CIDR mạng pod của bạn)
 sudo kubeadm init --pod-network-cidr=192.168.0.0/16
-
 # Thiết lập kubeconfig cho user hiện tại
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
